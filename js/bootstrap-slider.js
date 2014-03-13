@@ -28,7 +28,7 @@
 
 	var Slider = function(element, options) {
 		var el = this.element = $(element).hide();
-		var origWidth =  $(element)[0].style.width;
+		var origWidth = el.outerWidth();
 
 		var updateSlider = false;
 		var parent = this.element.parent();
@@ -46,8 +46,8 @@
 								'</div>'+
 								'<div class="tooltip"><div class="tooltip-arrow"></div><div class="tooltip-inner"></div></div>'+
 							'</div>')
-								.insertBefore(this.element)
-								.append(this.element);
+								.insertBefore(this.element);
+								//.append(this.element);
 		}
 
 		this.id = this.element.data('slider-id')||options.id;
@@ -81,22 +81,21 @@
 				this.stylePos = 'left';
 				this.mousePos = 'pageX';
 				this.sizePos = 'offsetWidth';
-				this.tooltip.addClass('top')[0].style.top = -this.tooltip.outerHeight() - 14 + 'px';
+				this.tooltip.addClass('top')[0].style.top = -this.tooltip.outerHeight() - 20 + 'px';
 				break;
 		}
 
-		var self = this;
-		$.each(['min', 'max', 'step', 'value'], function(i, attr) {
+		['min', 'max', 'step', 'value'].forEach(function(attr) {
 			if (typeof el.data('slider-' + attr) !== 'undefined') {
-				self[attr] = el.data('slider-' + attr);
+				this[attr] = el.data('slider-' + attr);
 			} else if (typeof options[attr] !== 'undefined') {
-				self[attr] = options[attr];
+				this[attr] = options[attr];
 			} else if (typeof el.prop(attr) !== 'undefined') {
-				self[attr] = el.prop(attr);
+				this[attr] = el.prop(attr);
 			} else {
-				self[attr] = 0; // to prevent empty string issues in calculations in IE
+				this[attr] = 0; // to prevent empty string issues in calculations in IE
 			}
-		});
+		}, this);
 
 		if (this.value instanceof Array) {
 			this.range = true;
@@ -112,7 +111,6 @@
 
 		this.handle1 = this.picker.find('.slider-handle:first');
 		this.handle1Stype = this.handle1[0].style;
-
 		this.handle2 = this.picker.find('.slider-handle:last');
 		this.handle2Stype = this.handle2[0].style;
 
@@ -148,7 +146,7 @@
 		];
 
 		this.offset = this.picker.offset();
-		this.size = this.picker[0][this.sizePos];
+		this.size = this.picker[0].style.width;
 
 		this.formater = options.formater;
 
@@ -167,14 +165,6 @@
 			});
 		}
 
-		this.handle1.on({
-			keydown: $.proxy(this.keydown, this, 0)
-		});
-
-		this.handle2.on({
-			keydown: $.proxy(this.keydown, this, 1)
-		});
-
 		if(tooltip === 'hide') {
 			this.tooltip.addClass('hide');
 		} else if(tooltip === 'always') {
@@ -185,21 +175,35 @@
 				mouseenter: $.proxy(this.showTooltip, this),
 				mouseleave: $.proxy(this.hideTooltip, this)
 			});
-			this.handle1.on({
-				focus: $.proxy(this.showTooltip, this),
-				blur: $.proxy(this.hideTooltip, this)
-			});
-			this.handle2.on({
-				focus: $.proxy(this.showTooltip, this),
-				blur: $.proxy(this.hideTooltip, this)
-			});
+		}
+
+		if (updateSlider === true) {
+			var old = this.getValue();
+			var val = this.calculateValue();
+			this.element
+				.trigger({
+					'type': 'slide',
+					'value': val
+				})
+				.data('value', val)
+				.prop('value', val);
+
+			if (old !== val) {
+				this.element
+					.trigger({
+						'type': 'slideChange',
+						'new': val, // without a string literal, IE8 will interpret as the JS "new" keyword
+						'old': old
+					})
+					.data('value', val)
+					.prop('value', val);
+			}
 		}
 
 		this.enabled = options.enabled && 
 						(this.element.data('slider-enabled') === undefined || this.element.data('slider-enabled') === true);
-		if(this.enabled) {
-			this.enable();
-		} else {
+		if(!this.enabled)
+		{
 			this.disable();
 		}
 	};
@@ -232,6 +236,7 @@
 			}
 
 			this.handle1Stype[this.stylePos] = positionPercentages[0]+'%';
+      this.tooltip[0].style[this.stylePos] = positionPercentages[0]-3.5+'%';
 			this.handle2Stype[this.stylePos] = positionPercentages[1]+'%';
 
 			if (this.orientation === 'vertical') {
@@ -252,9 +257,9 @@
 					this.formater(this.value[0])
 				);
         if(this.size > 0) {
-				  this.tooltip[0].style[this.stylePos] = this.size * positionPercentages[0]/100 - (this.orientation === 'vertical' ? this.tooltip.outerHeight()/2 : this.tooltip.outerWidth()/2) +'px';
+				this.tooltip[0].style[this.stylePos] = this.size * positionPercentages[0]/100 - (this.orientation === 'vertical' ? this.tooltip.outerHeight()/2 : this.tooltip.outerWidth()/2) +'px';
         }
-			}
+      }
 		},
 
 		mousedown: function(ev) {
@@ -308,56 +313,6 @@
 			return false;
 		},
 
-		keydown: function(handleIdx, ev) {
-			if(!this.isEnabled()) {
-				return false;
-			}
-
-			var dir;
-			switch (ev.which) {
-				case 37: // left
-				case 40: // down
-					dir = -1;
-					break;
-				case 39: // right
-				case 38: // up
-					dir = 1;
-					break;
-			}
-			if (!dir) {
-				return;
-			}
-
-			var oneStepValuePercentageChange = dir * this.percentage[2];
-			var percentage = this.percentage[handleIdx] + oneStepValuePercentageChange;
-
-			if (percentage > 100) {
-				percentage = 100;
-			} else if (percentage < 0) {
-				percentage = 0;
-			}
-
-			this.dragged = handleIdx;
-			this.adjustPercentageForRangeSliders(percentage);
-			this.percentage[this.dragged] = percentage;
-			this.layout();
-
-			var val = this.calculateValue();
-			this.setValue(val);
-			this.element
-				.trigger({
-					type: 'slide',
-					value: val
-				})
-				.trigger({
-					type: 'slideStop',
-					value: val
-				})
-				.data('value', val)
-				.prop('value', val);
-			return false;
-		},
-
 		mousemove: function(ev) {
 			if(!this.isEnabled()) {
 				return false;
@@ -366,25 +321,8 @@
 			if (this.touchCapable && ev.type === 'touchmove') {
 				ev = ev.originalEvent;
 			}
-			
+
 			var percentage = this.getPercentage(ev);
-			this.adjustPercentageForRangeSliders(percentage);
-			this.percentage[this.dragged] = this.reversed ? 100 - percentage : percentage;
-			this.layout();
-
-			var val = this.calculateValue();
-			this.setValue(val);
-			this.element
-				.trigger({
-					type: 'slide',
-					value: val
-				})
-				.data('value', val)
-				.prop('value', val);
-			return false;
-		},
-
-		adjustPercentageForRangeSliders: function(percentage) {
 			if (this.range) {
 				if (this.dragged === 0 && this.percentage[1] < percentage) {
 					this.percentage[0] = this.percentage[1];
@@ -394,6 +332,18 @@
 					this.dragged = 0;
 				}
 			}
+			this.percentage[this.dragged] = this.reversed ? 100 - percentage : percentage;
+			this.layout();
+			var val = this.calculateValue();
+			this.setValue(val);
+			this.element
+				.trigger({
+					type: 'slide',
+					value: val
+				})
+				.data('value', val)
+				.prop('value', val);
+			return false;
 		},
 
 		mouseup: function() {
@@ -432,13 +382,10 @@
 		calculateValue: function() {
 			var val;
 			if (this.range) {
-				val = [this.min,this.max];
-                if (this.percentage[0] !== 0){
-                    val[0] = (Math.max(this.min, this.min + Math.round((this.diff * this.percentage[0]/100)/this.step)*this.step));
-                }
-                if (this.percentage[1] !== 100){
-                    val[1] = (Math.min(this.max, this.min + Math.round((this.diff * this.percentage[1]/100)/this.step)*this.step));
-                }
+				val = [
+					(Math.max(this.min, this.min + Math.round((this.diff * this.percentage[0]/100)/this.step)*this.step)),
+					(Math.min(this.max, this.min + Math.round((this.diff * this.percentage[1]/100)/this.step)*this.step))
+				];
 				this.value = val;
 			} else {
 				val = (this.min + Math.round((this.diff * this.percentage[0]/100)/this.step)*this.step);
@@ -492,21 +439,13 @@
 				this.step*100/this.diff
 			];
 			this.layout();
-
-			this.element
-				.trigger({
-					'type': 'slide',
-					'value': this.value
-				})
-				.data('value', this.value)
-				.prop('value', this.value);
 		},
 
 		validateInputValue : function(val) {
 			if(typeof val === 'number') {
 				return val;
 			} else if(val instanceof Array) {
-				$.each(val, function(i, input) { if (typeof input !== 'number') { throw new Error( ErrorMsgs.formatInvalidInputErrorMsg(input) ); }});
+				val.forEach(function(input) { if (typeof input !== 'number') { throw new Error( ErrorMsgs.formatInvalidInputErrorMsg(input) ); }});
 				return val;
 			} else {
 				throw new Error( ErrorMsgs.formatInvalidInputErrorMsg(val) );
@@ -514,25 +453,20 @@
 		},
 
 		destroy: function(){
-			this.handle1.off();
-			this.handle2.off();
-			this.element.off().show().insertBefore(this.picker);
-			this.picker.off().remove();
+			this.element.show().insertBefore(this.picker);
+			this.picker.remove();
 			$(this.element).removeData('slider');
+			$(this.element).off();
 		},
 
 		disable: function() {
 			this.enabled = false;
-			this.handle1.removeAttr("tabindex");
-			this.handle2.removeAttr("tabindex");
 			this.picker.addClass('slider-disabled');
 			this.element.trigger('slideDisabled');
 		},
 
 		enable: function() {
 			this.enabled = true;
-			this.handle1.attr("tabindex", 0);
-			this.handle2.attr("tabindex", 0);
 			this.picker.removeClass('slider-disabled');
 			this.element.trigger('slideEnabled');
 		},
